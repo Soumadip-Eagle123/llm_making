@@ -1,0 +1,15 @@
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+def main():
+    print("Hello from ai-fundamentals!")
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+if __name__ == "__main__":
+    main()
