@@ -33,7 +33,7 @@ def draw_dot(root):
 
         dot.node(
             name=uid,
-            label="{ %s | data %.4f | grad %.4f}" % (n.label, n.data, n.grad(root)), 
+            label="{ %s | data %.4f | grad %.4f}" % (n.label, n.data, n.grad), 
             shape='record'
         )
 

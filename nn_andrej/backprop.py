@@ -13,5 +13,6 @@ x2w2 = x2*w2; x2w2.label = 'x2*w2'
 x1w1x2w2 = x1w1 + x2w2; x1w1x2w2.label = 'x1*w1 + x2*w2'
 n = x1w1x2w2 + b; n.label = 'n'
 o = n.tanh(); o.label = 'o'
+o.backward()
 draw_dot(o).render('Backprop_Graph', view=True)
 
