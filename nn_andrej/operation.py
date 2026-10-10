@@ -1,9 +1,11 @@
 import math
-
+import itertools
+_ids = itertools.count()
 
 class Value:
 
     def __init__(self, data, _children=(), _op='', label=''):
+        self._id = next(_ids)
         self.data = data
         self._prev = set(_children)
         self._op = _op
@@ -33,8 +35,37 @@ class Value:
 
         return out
 
-    def __add__(self, other):
+    def __neg__(self):
+        return self*-1
 
+    def __sub__(self, other):
+        return self + (-other)
+
+    def exp(self):
+        x = self.data
+        t = math.exp(x)
+        out = Value(t, (self, ), 'exp')
+        def _backward():
+            self.grad += out.data*out.grad
+        out._backward = _backward
+
+        return out
+
+    def __truediv__(self, other):
+        return self*(other**-1)
+
+    def __pow__(self, other):
+        assert isinstance(other, (int, float)), "only supporting integer or floating point numbers"
+        out = Value(self.data**other, (self,), f'**{other}')
+        def _backward():
+            self.grad += other*(self.data**(other-1))*out.grad
+
+        out._backward = _backward
+
+        return out
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
         out = Value(
             self.data + other.data,
             (self, other),
@@ -49,8 +80,11 @@ class Value:
 
         return out
 
-    def __mul__(self, other):
+    def __radd__(self, other):
+        return self + other
 
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
         out = Value(
             self.data * other.data,
             (self, other),
@@ -67,6 +101,19 @@ class Value:
 
         out._backward = _backward
 
+        return out
+
+    def __rmul__(self, other):
+        return self * other
+
+    def relu(self):
+        out = Value(self.data if self.data > 0 else 0.0, (self,), 'relu')
+
+        def _backward():
+            # ReLU'(x) = 1 if x > 0 else 0 (0 at the origin)
+            self.grad += (out.data > 0) * out.grad
+
+        out._backward = _backward
         return out
 
 

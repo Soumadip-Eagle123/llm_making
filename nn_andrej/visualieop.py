@@ -23,7 +23,7 @@ def trace(root):
 
 
 def draw_dot(root):
-    dot = Digraph(format='svg', graph_attr={'rankdir': 'LR'})
+    dot = Digraph(format='jpg', graph_attr={'rankdir': 'LR'})
 
     nodes, edges = trace(root)
 

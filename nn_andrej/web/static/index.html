@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}</script>
+<title>Backprop Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Urbanist:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head><body>
+<header class="top">
+ <div><h1>Backprop Studio</h1><p>Runs your own <code>Value</code> autograd engine on the server and replays its recorded forward, backward and update steps.</p></div>
+ <button id="bTheme" aria-pressed="false">Dark mode</button>
+</header>
+<div class="app">
+<aside class="side">
+ <section><h2>Network &amp; data</h2>
+  <div class="row"><div><label for="nin">Inputs</label><input id="nin" type="number" value="3" min="1" max="6"></div>
+  <div><label for="nout">Outputs</label><input id="nout" type="number" value="1" min="1" max="3"></div></div>
+  <label for="hidden">Hidden layers (neurons per layer, comma-separated)</label><input id="hidden" value="3">
+  <div class="row"><div><label for="act">Activation</label><select id="act"><option>relu</option><option>tanh</option></select></div>
+  <div><label for="out_act">Output layer</label><select id="out_act"><option value="linear">linear</option><option value="same">same as hidden</option></select></div></div>
+  <div class="row"><div><label for="loss">Loss</label><select id="loss"><option value="mse">mean squared</option><option value="sse">sum squared</option></select></div>
+  <div><label for="lr">Learning rate</label><input id="lr" type="number" step="0.01" value="0.05"></div></div>
+  <div class="row"><div><label for="epochs">Epochs</label><input id="epochs" type="number" value="30" min="1"></div>
+  <div><label for="seed">Seed</label><input id="seed" type="number" value="1" min="0"></div></div>
+  <label for="data">Examples: one per line, inputs then targets</label>
+  <textarea id="data" rows="5">2, 3, -1, 1
+3, -1, 0.5, -1
+0.5, 1, 1, -1
+1, 1, -1, 1</textarea>
+  <div class="bar" style="margin-top:12px"><button class="primary" id="bBuild">Build model</button></div>
+ </section>
+ <section><h2>Legend</h2>
+  <p class="small">Each node shows its label, <b>= data</b>, then its gradient: <b class="pos">∂ +0.12</b> positive, <b class="neg">∂ −0.12</b> negative, <b>∂ 0.0000</b> zero. <b>×k</b> means k paths have added to it. Tinted box = parameter, dashed = input or target, thick outline = executing now. Solid red edge = forward step, dashed red edge = gradient flowing back, faded = outside the focused example.</p>
+ </section>
+</aside>
+<main class="stage">
+ <div class="bar">
+  <button class="primary" id="bPlay">Play</button><button id="bBack">◀ Step back</button><button id="bFwd">Step ▶</button>
+  <button class="danger" id="bReset">Reset</button>
+  <span class="sep"></span>
+  <button id="bZin" aria-label="Zoom in">+</button><button id="bZout" aria-label="Zoom out">−</button><button id="bFit">Fit</button>
+  <button id="bJpg">Download JPG</button>
+ </div>
+ <div class="bar tight">
+  <label class="inline">Step delay <input id="delay" type="range" min="0" max="1500" step="50" value="500"><output id="dv">500 ms</output></label>
+  <label class="inline">Focus <select id="focus"><option value="all">all examples</option></select></label>
+  <label class="inline"><input type="checkbox" id="follow"> Follow active node</label>
+ </div>
+ <div id="gwrap"><svg id="svg" role="img" aria-label="Computational graph"><g id="vp"></g></svg>
+  <div class="hint">scroll = zoom · drag = pan · click a node to inspect · delay 0 jumps to the end of each iteration</div></div>
+ <div id="step" aria-live="polite"></div><div id="msg" role="status">Press “Build model”.</div>
+</main>
+<aside class="side">
+ <section><h2>Training</h2><div class="kpi">
+  <span>phase</span><span id="kPhase">—</span><span>epoch</span><span id="kEp">—</span><span>loss</span><span id="kLoss">—</span>
+  <span>previous</span><span id="kPrev">—</span><span>change</span><span id="kChg">—</span><span>learning rate</span><span id="kLr">—</span>
+  <span>parameters</span><span id="np">—</span><span>activation</span><span id="kAct">—</span></div>
+  <progress id="prog" value="0" max="1"></progress>
+  <svg id="chart" viewBox="0 0 280 100" role="img" aria-label="Loss versus epoch"></svg>
+  <p class="small">Loss need not fall monotonically: learning rate, initialisation, activation and data all matter.</p></section>
+ <section><h2>Examples (click to inspect)</h2><div class="scroll"><table id="ex"></table></div></section>
+ <section><h2>Inspector</h2><div id="insp" class="small">Click a node.</div></section>
+ <section><h2>Dead ReLU check</h2><div id="dead" class="small"></div></section>
+ <section><h2>Parameters: initial vs current</h2><div class="scroll"><table id="pt"></table></div></section>
+</aside>
+</div>
+<script src="/static/script.js"></script>
+</body></html>
