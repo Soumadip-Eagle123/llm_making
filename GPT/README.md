@@ -1,22 +1,28 @@
 # GPT Training on Mentzer Heavy Duty
 
-This project is a minimal reimplementation of Andrej Karpathy's **nanoGPT** walkthrough (https://github.com/karpathy/nanoGPT). It trains a simple character-level **bigram language model** on the text of Mike Mentzer's *Heavy Duty* book provided in `human_performance_gpt_corpus.txt`.
+This project trains a character-level GPT on the Mike Mentzer training corpus stored in `high-intensity-training-the-mike-mentzer-way.txt`.
 
 ## Files
-- `initial.py` – main training script (already updated with a training loop).
-- `bigramlm.py` – model definition.
-- `requirements.txt` – Python dependencies (`torch`).
-- `setup.sh` – quick setup script to create a virtual environment and install dependencies.
+
+- `initial.py` loads the local corpus, trains the model, and saves a checkpoint.
+- `generate.py` loads a checkpoint and generates text from a prompt without retraining.
+- `transformer.py` defines the Transformer language model.
+- `high-intensity-training-the-mike-mentzer-way.txt` is the training corpus.
 
 ## Usage
+
+Install PyTorch and tqdm, then train the model:
+
 ```bash
-./setup.sh           # creates venv and installs torch
-source venv/bin/activate   # activate the virtual environment
-python3 initial.py   # start training and generate text
+python3 initial.py --max-iters 2000
 ```
 
-The generated text will be printed after training completes.
+Training uses CUDA when available and otherwise runs on CPU. When training completes, the model is saved to `mentzer_gpt.pt`.
 
-## References
-- Andrej Karpathy's original GPT walkthrough: https://github.com/karpathy/nanoGPT
-- Mike Mentzer's *Heavy Duty* book (text supplied in this repository).
+Run generation separately as many times as you like:
+
+```bash
+python3 generate.py --prompt "repetition" --max-new-tokens 100 --temperature 0.2 --top-k 7
+```
+
+Generation uses the saved checkpoint and does not retrain. Use `--checkpoint PATH` in either script to choose a different checkpoint location. Use `--corpus PATH` when training on another UTF-8 text corpus.

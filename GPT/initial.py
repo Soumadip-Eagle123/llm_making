@@ -1,92 +1,115 @@
-import faulthandler, sys, time
-faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)  # shows where it's stuck
-
-T0 = time.time()
-def log(msg):
-    print(f"[{time.time()-T0:6.1f}s] {msg}", flush=True)
-
-log("script started, importing torch...")
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import argparse
+import sys
+import time
 from pathlib import Path
-log(f"torch {torch.__version__} imported | threads={torch.get_num_threads()} | cuda={torch.cuda.is_available()}")
 
-try:
-    from tqdm import tqdm
-    log("tqdm imported OK")
-except ImportError:
-    def tqdm(x, *args, **kwargs):
-        return x
-    log("tqdm NOT installed - progress bar disabled")
+import torch
 
 from transformer import TransformerLanguageModel
-log("transformer imported")
 
-# ---------------- Data ----------------
-file_path = Path(__file__).parent / "high-intensity-training-the-mike-mentzer-way.txt"
-with open(file_path, 'r', encoding='utf-8') as f:
-    text = f.read()
-log(f"read corpus: {len(text):,} chars")
 
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
-stoi = {ch: i for i, ch in enumerate(chars)}
-itos = {i: ch for i, ch in enumerate(chars)}
-encode = lambda s: [stoi[c] for c in s]
-decode = lambda l: ''.join([itos[i] for i in l])
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--corpus", type=Path, default=Path(__file__).parent / "high-intensity-training-the-mike-mentzer-way.txt")
+    parser.add_argument("--max-iters", type=int, default=2000)
+    parser.add_argument("--checkpoint", type=Path, default=Path(__file__).parent / "mentzer_gpt.pt")
+    return parser.parse_args()
 
-data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9 * len(data))
-train_data, val_data = data[:n], data[n:]
-log(f"encoded data: vocab={vocab_size}, train={len(train_data):,}, val={len(val_data):,}")
 
-# ---------------- Hyperparameters ----------------
-block_size = 64
-batch_size = 32
-max_iters = 2000
-learning_rate = 5e-4
-eval_interval = 200
-n_layer, n_head, n_embd = 2, 4, 128
+def main():
+    args = parse_args()
+    start_time = time.time()
 
-def get_batch(split):
-    d = train_data if split == "train" else val_data
-    ix = torch.randint(len(d) - block_size, (batch_size,))
-    x = torch.stack([d[i:i+block_size] for i in ix])
-    y = torch.stack([d[i+1:i+block_size+1] for i in ix])
-    return x, y
+    def log(message):
+        print(f"[{time.time() - start_time:6.1f}s] {message}", flush=True)
 
-# ---------------- Model ----------------
-model = TransformerLanguageModel(vocab_size, block_size, n_layer, n_head, n_embd)
-log(f"model built: {sum(p.numel() for p in model.parameters()):,} params")
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log(f"using device: {device}")
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        def tqdm(items, *args, **kwargs):
+            return items
 
-# ---------------- Single-step smoke test ----------------
-t = time.time()
-xb, yb = get_batch('train')
-log("got first batch")
-logits, loss = model(xb, yb)
-log(f"first forward OK, loss={loss.item():.4f}, took {time.time()-t:.2f}s")
-t = time.time()
-loss.backward()
-log(f"first backward OK, took {time.time()-t:.2f}s")
+    text = args.corpus.read_text(encoding="utf-8")
+    log(f"read corpus: {len(text):,} chars")
+    chars = sorted(set(text))
+    vocab_size = len(chars)
+    stoi = {character: index for index, character in enumerate(chars)}
+    encode = lambda value: [stoi[character] for character in value]
+    data = torch.tensor(encode(text), dtype=torch.long, device=device)
+    block_size = 64
+    if len(data) <= block_size + 1:
+        raise ValueError("The corpus must contain more than 65 characters")
+    split_index = int(0.9 * len(data))
+    train_data, val_data = data[:split_index], data[split_index:]
+    if len(val_data) <= block_size or len(train_data) <= block_size:
+        raise ValueError("The training and validation splits must each be longer than the block size")
+    log(f"encoded data: vocab={vocab_size}, train={len(train_data):,}, val={len(val_data):,}")
 
-# ---------------- Training ----------------
-log("starting training loop")
-for it in tqdm(range(max_iters), desc="training", file=sys.stdout, mininterval=0.5):
-    xb, yb = get_batch('train')
-    logits, loss = model(xb, yb)
+    batch_size = 32
+    learning_rate = 5e-4
+    eval_interval = 200
+    n_layer, n_head, n_embd = 2, 4, 128
+
+    def get_batch(split):
+        source = train_data if split == "train" else val_data
+        indices = torch.randint(len(source) - block_size, (batch_size,), device=device)
+        x = torch.stack([source[index : index + block_size] for index in indices])
+        y = torch.stack([source[index + 1 : index + block_size + 1] for index in indices])
+        return x, y
+
+    model = TransformerLanguageModel(
+        vocab_size, block_size, n_layer, n_head, n_embd
+    ).to(device)
+    log(f"model built: {sum(parameter.numel() for parameter in model.parameters()):,} params")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+    xb, yb = get_batch("train")
+    _, loss = model(xb, yb)
+    log(f"first forward OK, loss={loss.item():.4f}")
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
-    optimizer.step()
-    if it % eval_interval == 0:
-        with torch.no_grad():
-            _, val_loss = model(*get_batch('val'))
-        tqdm.write(f"Iter {it:5d} | train {loss.item():.4f} | val {val_loss.item():.4f}") if hasattr(tqdm, "write") else print(f"Iter {it} | train {loss.item():.4f} | val {val_loss.item():.4f}", flush=True)
+    log("first backward OK")
+    optimizer.zero_grad(set_to_none=True)
 
-log("training done, generating")
-start = torch.zeros((1, 1), dtype=torch.long)
-generated = model.generate(start, max_new_tokens=500)
-print("--- Generated sample ---")
-print(decode(generated[0].tolist()))
-log("done")
+    log("starting training loop")
+    for iteration in tqdm(
+        range(args.max_iters), desc="training", file=sys.stdout, mininterval=0.5
+    ):
+        xb, yb = get_batch("train")
+        _, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        if iteration % eval_interval == 0:
+            model.eval()
+            with torch.no_grad():
+                _, val_loss = model(*get_batch("val"))
+            model.train()
+            message = f"Iter {iteration:5d} | train {loss.item():.4f} | val {val_loss.item():.4f}"
+            if hasattr(tqdm, "write"):
+                tqdm.write(message)
+            else:
+                print(message, flush=True)
+
+    checkpoint = {
+        "model_state_dict": model.state_dict(),
+        "chars": chars,
+        "model_config": {
+            "vocab_size": vocab_size,
+            "block_size": block_size,
+            "n_layer": n_layer,
+            "n_head": n_head,
+            "n_embd": n_embd,
+            "dropout": 0.1,
+        },
+    }
+    args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint, args.checkpoint)
+    log(f"saved checkpoint: {args.checkpoint}")
+    log("training done")
+
+
+if __name__ == "__main__":
+    main()
